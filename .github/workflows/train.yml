@@ -1,0 +1,72 @@
+name: kevai-train
+
+on:
+  push:
+    paths:
+      - 'model-latihan.jsonl'
+      - 'train_lora_local.py'
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['kevai-train']
+    types: [completed]
+
+concurrency:
+  group: kevai-train
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gate DONE — skip bila training sudah tuntas
+        id: gate
+        run: |
+          if [ -f work/DONE ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "Training sudah tuntas sebelumnya — chain selesai."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.go == 'true'
+        with:
+          python-version: '3.11'
+
+      - name: Install deps (torch CPU + transformers)
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers peft datasets accelerate
+
+      - name: Restore checkpoint (auto-resume antar job)
+        if: steps.gate.outputs.go == 'true'
+        uses: actions/cache@v4
+        with:
+          path: work/adapter
+          key: kevai-adapter-${{ github.run_id }}
+          restore-keys: |
+            kevai-adapter
+
+      - name: TRAINING (auto-resume, cap 5.8 jam/job)
+        if: steps.gate.outputs.go == 'true'
+        run: python train_lora_local.py
+
+      - name: Konversi merged -> GGUF + upload artifact (bila tuntas)
+        if: steps.gate.outputs.go == 'true' && hashFiles('work/merged/model.safetensors') != ''
+        run: |
+          pip install gguf
+          curl -sSL -o convert_hf_to_gguf.py https://raw.githubusercontent.com/ggml-org/llama.cpp/master/convert_hf_to_gguf.py
+          python convert_hf_to_gguf.py work/merged --outfile work/KevAI-Edge.gguf --outtype f16
+          echo "KEVAI-EDGE GGUF SIAP — unduh dari artifact run ini"
+
+      - name: Upload model GGUF (bila tuntas)
+        if: steps.gate.outputs.go == 'true' && hashFiles('work/KevAI-Edge.gguf') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kevai-edge-gguf
+          path: work/KevAI-Edge.gguf
+          retention-days: 90
