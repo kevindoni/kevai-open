@@ -20,6 +20,8 @@ from transformers import (
     DataCollatorForSeq2Seq,
 )
 from peft import LoraConfig, get_peft_model
+from transformers import TrainerCallback
+import subprocess
 
 BASE = os.environ.get("KEVAI_BASE_MODEL", "Qwen/Qwen3-1.7B")
 DATA = "model-latihan.jsonl"
@@ -28,6 +30,23 @@ ADAPTER_DIR = os.path.join(WORK, "adapter")
 MERGED_DIR = os.path.join(WORK, "merged")
 DONE = os.path.join(WORK, "DONE")
 EPOCHS = 3
+
+# ==== GIT-CHECKPOINT: simpan checkpoint ke repo master (kebal cap 6 jam) ====
+def _git_sync(step):
+    try:
+        cwd = os.getcwd()
+        subprocess.run(["git", "config", "user.email", "kevai-bot@users.noreply.github.com"], cwd=cwd, check=False)
+        subprocess.run(["git", "config", "user.name", "kevai-bot"], cwd=cwd, check=False)
+        subprocess.run(["git", "add", "work/adapter", "work/dataset_count.txt"], cwd=cwd, check=False)
+        subprocess.run(["git", "commit", "-m", f"[skip ci] checkpoint step {step}"], cwd=cwd, check=False)
+        subprocess.run(["git", "push"], cwd=cwd, check=False, timeout=180)
+        print("     [git-sync] checkpoint step", step, "terkirim ke master ✓")
+    except Exception as e:
+        print("     [git-sync] gagal (latihan tetap jalan):", e)
+
+class SyncCallback(TrainerCallback):
+    def on_save(self, args, state, control, **kwargs):
+        _git_sync(state.global_step)
 
 # [0/6] Gate: kalau sudah tuntas, jangan latih ulang.
 if os.path.isfile(DONE) and os.path.isfile(os.path.join(MERGED_DIR, "config.json")):
@@ -131,6 +150,7 @@ trainer = Trainer(
     train_dataset=ds,
     data_collator=DataCollatorForSeq2Seq(tok, padding=True),
 )
+trainer.add_callback(SyncCallback())
 
 # [4/6] training dengan auto-resume dari checkpoint
 print("[4/6] TRAINING — resume otomatis dari checkpoint...")
