@@ -41,9 +41,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: work/
-          key: kevai-work-${{ github.run_id }}
+          key: kevai-work-q3-${{ github.run_id }}
           restore-keys: |
-            kevai-work-
+            kevai-work-q3-
 
       - name: TRAINING (auto-resume)
         run: python train_lora_local.py

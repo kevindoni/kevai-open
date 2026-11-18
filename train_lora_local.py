@@ -21,7 +21,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model
 
-BASE = os.environ.get("KEVAI_BASE_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
+BASE = os.environ.get("KEVAI_BASE_MODEL", "Qwen/Qwen3-1.7B")
 DATA = "model-latihan.jsonl"
 WORK = os.environ.get("KEVAI_WORK", "work")
 ADAPTER_DIR = os.path.join(WORK, "adapter")
